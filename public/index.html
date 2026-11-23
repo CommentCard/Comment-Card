@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comment Card — honest feedback, not reviews</title>
+  <meta name="description" content="Comment Card lets customers leave a business private, honest comments about what they'd change — no stars, no public reviews.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-page="home">
+  <header class="topbar">
+    <a class="brand" href="/">Comment <span>Card</span></a>
+    <nav>
+      <span id="authed-nav" hidden><a class="btn small" href="/dashboard">My dashboard</a></span>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>Honest feedback, not reviews.</h1>
+      <p class="tagline">Comment Card gives customers a simple card to say what bugged them, what they'd change, or an idea they have — and gives each business a public feed of suggestions to scroll through, plus a private dashboard to act on them.</p>
+    </section>
+
+    <section class="card">
+      <h2 id="auth-heading">Create your business account</h2>
+      <p class="muted">Your business gets its own public page and its own private inbox. Free to start — you host it yourself.</p>
+
+      <form id="signup-form" novalidate>
+        <label for="signup-name">Business name</label>
+        <input id="signup-name" type="text" autocomplete="organization" placeholder="e.g. Harbor Lane Bakery" required maxlength="120">
+        <label for="signup-email">Email</label>
+        <input id="signup-email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required maxlength="160">
+        <label for="signup-password">Password <span class="hint">— at least 8 characters</span></label>
+        <input id="signup-password" type="password" autocomplete="new-password" required minlength="8">
+        <div class="error" id="signup-error"></div>
+        <button class="btn block" type="submit">Create my Comment Card</button>
+        <p class="tiny center" style="margin-top:12px">Already have an account? <a href="#" id="show-login">Log in</a></p>
+      </form>
+
+      <form id="login-form" hidden novalidate>
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required maxlength="160">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" required>
+        <div class="error" id="login-error"></div>
+        <button class="btn block" type="submit">Log in</button>
+        <p class="tiny center" style="margin-top:12px">New here? <a href="#" id="show-signup">Create an account</a></p>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li><b>Your business signs up</b> and gets a public link, like <code>commentcard.app/b/harbor-lane-bakery</code>. Print it on a receipt or a table card, or share it anywhere.</li>
+        <li><b>Customers open the link</b>, scroll through other people's suggestions, and leave their own — what bugged them, what they'd change, or an idea.</li>
+        <li><b>Suggestions show up in public</b> right away, like scrolling through comments. The business sees them too, in a private dashboard, and can mark them noted, acted on, or hide anything off-topic.</li>
+      </ol>
+      <p class="muted">No stars. No public review pages. Just the honest stuff a business needs to hear.</p>
+    </section>
+
+    <section>
+      <h2>Latest suggestions from businesses on Comment Card</h2>
+      <p class="muted">A public scroll of what customers are saying — and what businesses are hearing.</p>
+      <ul class="feed" id="discover-list"></ul>
+      <div class="empty" id="discover-empty" hidden>No suggestions yet — be the first business to get a card.</div>
+    </section>
+  </main>
+
+  <footer>Comment Card — customer insight, not reviews.</footer>
+  <script src="/app.js"></script>
+</body>
+</html>

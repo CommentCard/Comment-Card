@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comment Card</title>
+  <meta name="description" content="Leave a private comment for this business — what bugged you, what you'd change, or an idea.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-page="card">
+  <header class="topbar">
+    <a class="brand" href="/">Comment <span>Card</span></a>
+    <nav><a class="btn small ghost" href="/">For businesses</a></nav>
+  </header>
+
+  <main class="wrap">
+    <h1 id="biz-heading"><span id="biz-name">Loading…</span></h1>
+    <p class="lede" id="welcome-note" hidden></p>
+    <p class="muted" id="biz-missing" hidden>We couldn't find that business. Check the link and try again.</p>
+
+    <section class="card paper-card" aria-label="Leave a comment">
+      <h2>Leave a comment</h2>
+      <p class="muted">Not a review — just tell them what bugged you, what you'd change, or an idea. It shows up on their public suggestions feed right away.</p>
+      <form id="comment-form" novalidate>
+        <label>What kind of comment is this?</label>
+        <div class="chips" id="kind-chips">
+          <button type="button" class="chip" data-value="bugged" aria-pressed="false">Something bugged me</button>
+          <button type="button" class="chip" data-value="change" aria-pressed="false">Something I'd change</button>
+          <button type="button" class="chip" data-value="idea" aria-pressed="false">An idea</button>
+        </div>
+
+        <label>Which part of your visit is it about?</label>
+        <div class="chips" id="area-chips">
+          <button type="button" class="chip" data-value="service" aria-pressed="false">Service</button>
+          <button type="button" class="chip" data-value="wait-time" aria-pressed="false">Wait time</button>
+          <button type="button" class="chip" data-value="price" aria-pressed="false">Price</button>
+          <button type="button" class="chip" data-value="cleanliness" aria-pressed="false">Cleanliness</button>
+          <button type="button" class="chip" data-value="food-quality" aria-pressed="false">Food / product quality</button>
+          <button type="button" class="chip" data-value="staff" aria-pressed="false">Staff</button>
+          <button type="button" class="chip" data-value="other" aria-pressed="false">Something else</button>
+        </div>
+
+        <label for="comment-text">Your comment</label>
+        <textarea id="comment-text" placeholder="Tell them straight — what happened, and what bothered you?" maxlength="2000" required></textarea>
+
+        <label for="better-text">What would have made it better? <span class="hint">— optional</span></label>
+        <textarea id="better-text" style="min-height:64px" placeholder="e.g. A second till open at lunch would have fixed it." maxlength="1000"></textarea>
+
+        <label for="visit-frequency">How often do you come here?</label>
+        <select id="visit-frequency">
+          <option value="">Prefer not to say</option>
+          <option value="first-time">First visit</option>
+          <option value="sometimes">Sometimes</option>
+          <option value="regular">Regular</option>
+        </select>
+
+        <label for="commenter-name">Your name <span class="hint">— optional, shown with your suggestion</span></label>
+        <input id="commenter-name" type="text" placeholder="Leave blank to stay anonymous" maxlength="80">
+
+        <label for="commenter-contact">How can they reach you? <span class="hint">— optional, only the business sees this</span></label>
+        <input id="commenter-contact" type="text" placeholder="Email or phone — only if you want a reply" maxlength="160">
+
+        <div class="error" id="form-error"></div>
+        <div class="success" id="thanks">Thanks — your suggestion is on their public feed now.</div>
+        <button class="btn block" type="submit">Leave my comment</button>
+      </form>
+    </section>
+
+    <section aria-label="Suggestions">
+      <h2>Suggestions for this business</h2>
+      <ul class="feed" id="feed"></ul>
+      <div class="empty" id="feed-empty" hidden>No suggestions yet — yours could be the first.</div>
+      <div class="center"><button class="btn ghost" id="load-more" hidden>Load more suggestions</button></div>
+    </section>
+  </main>
+
+  <footer>Comment Card — customer insight, not reviews.</footer>
+  <script src="/app.js"></script>
+</body>
+</html>
