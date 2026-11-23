@@ -75,6 +75,16 @@ function hideError(el) {
   el.textContent = '';
 }
 
+function repliesHTML(c, businessName) {
+  if (!c.replies || !c.replies.length) return '';
+  return c.replies.map((r) => `
+    <div class="owner-reply">
+      <div class="reply-label">↩ Reply from ${esc(r.business_name || businessName || 'the business')}</div>
+      <p>${esc(r.text)}</p>
+      <div class="reply-when">${esc(timeAgo(r.created_at))}</div>
+    </div>`).join('');
+}
+
 function commentCardHTML(c, opts) {
   const o = opts || {};
   const better = c.better_text
@@ -102,45 +112,220 @@ function commentCardHTML(c, opts) {
       ${byline}
       ${biz}
       ${statusLine}
+      ${repliesHTML(c, o.businessName)}
     </li>`;
 }
 
-/* ---------------- Home page: signup / login / discover ---------------- */
+/* ---------------- Home page: lookup + add business + discover + login ---------------- */
 
 function initHome() {
-  const signupForm = document.getElementById('signup-form');
-  const loginForm = document.getElementById('login-form');
-  const toLogin = document.getElementById('show-login');
-  const toSignup = document.getElementById('show-signup');
+  const input = document.getElementById('lookup-input');
+  const dropdown = document.getElementById('lookup-results');
+  const addForm = document.getElementById('add-business-form');
+  const addName = document.getElementById('add-name');
+  const addEmail = document.getElementById('add-email');
+  const addPlaceId = document.getElementById('add-place-id');
+  const addAddress = document.getElementById('add-address');
+  const addWebsite = document.getElementById('add-website');
+  const emailSuggBox = document.getElementById('email-suggestions');
+  const emailPick = document.getElementById('email-pick');
 
-  if (toLogin) toLogin.addEventListener('click', (e) => {
-    e.preventDefault();
-    signupForm.hidden = true; loginForm.hidden = false;
-  });
-  if (toSignup) toSignup.addEventListener('click', (e) => {
-    e.preventDefault();
-    loginForm.hidden = true; signupForm.hidden = false;
+  let items = []; // {kind:'local'|'place'|'manual', ...}
+  let activeIndex = -1;
+  let debounceTimer = null;
+  let lookupSeq = 0; // ignore stale responses
+
+  function closeDropdown() {
+    dropdown.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    activeIndex = -1;
+  }
+
+  function setActive(i) {
+    activeIndex = i;
+    dropdown.querySelectorAll('.lookup-item').forEach((el, idx) => {
+      el.classList.toggle('active', idx === i);
+      el.setAttribute('aria-selected', String(idx === i));
+    });
+  }
+
+  function renderDropdown(loading) {
+    if (loading) {
+      dropdown.innerHTML = '<li class="lookup-loading"><span class="spinner"></span>Looking for that place…</li>';
+      dropdown.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      return;
+    }
+    if (!items.length) {
+      dropdown.innerHTML = '';
+      dropdown.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    dropdown.innerHTML = items.map((it, i) => {
+      if (it.kind === 'manual') {
+        return `<li><button type="button" class="lookup-item" role="option" data-i="${i}"><span class="name">No matches — add “${esc(it.query)}” manually</span><span class="addr">We'll start a fresh page for this business.</span></button></li>`;
+      }
+      if (it.kind === 'local') {
+        return `<li><button type="button" class="lookup-item" role="option" data-i="${i}"><span class="name">${esc(it.name)}<span class="tag on-card">On Comment Card</span></span><span class="addr">Already has a page — open it and leave a card.</span></button></li>`;
+      }
+      return `<li><button type="button" class="lookup-item" role="option" data-i="${i}"><span class="name">${esc(it.name)}</span><span class="addr">${esc(it.address || '')}</span></button></li>`;
+    }).join('');
+    dropdown.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    setActive(-1);
+  }
+
+  async function runLookup(query) {
+    const seq = ++lookupSeq;
+    renderDropdown(true);
+    const [local, cascade] = await Promise.all([
+      api(`/api/businesses/search?q=${encodeURIComponent(query)}`).catch(() => ({ businesses: [] })),
+      api(`/api/places/search?query=${encodeURIComponent(query)}`).catch(() => ({ results: [] })),
+    ]);
+    if (seq !== lookupSeq) return; // a newer keystroke already superseded this
+    items = [];
+    for (const b of (local.businesses || [])) {
+      items.push({ kind: 'local', slug: b.slug, name: b.name });
+    }
+    for (const r of (cascade.results || [])) {
+      items.push({ kind: 'place', ...r });
+    }
+    items.push({ kind: 'manual', query });
+    renderDropdown(false);
+  }
+
+  // Fill the add-business form from a lookup result and, when a website is
+  // known, scan it for email addresses the business publishes itself.
+  async function selectPlace(it) {
+    closeDropdown();
+    addName.value = it.name || '';
+    addPlaceId.value = it.placeId || '';
+    addAddress.hidden = !it.address;
+    addAddress.textContent = it.address ? `📍 ${it.address}` : '';
+    addWebsite.hidden = true;
+    emailSuggBox.hidden = true;
+    emailPick.innerHTML = '';
+    input.value = it.name || '';
+
+    if (it.source === 'places' && it.placeId && !it.placeId.startsWith('osm:')) {
+      // Get the full details (phone + website) for a Google Places result.
+      try {
+        const d = await api(`/api/places/details?placeId=${encodeURIComponent(it.placeId)}`);
+        if (d.place) {
+          if (d.place.website) showWebsite(d.place.website);
+          if (d.place.address) {
+            addAddress.hidden = false;
+            addAddress.textContent = `📍 ${d.place.address}`;
+          }
+        }
+      } catch (e) { /* details are a bonus — manual entry still works */ }
+    } else if (it.website) {
+      showWebsite(it.website);
+    }
+    addName.focus();
+  }
+
+  async function showWebsite(website) {
+    addWebsite.hidden = false;
+    addWebsite.innerHTML = `Website: <a href="${esc(website)}" target="_blank" rel="noopener">${esc(website)}</a> — check there for their email if we can't find one.`;
+    emailSuggBox.hidden = true;
+    try {
+      const data = await api(`/api/lookup/emails?url=${encodeURIComponent(website)}`);
+      if (data.emails && data.emails.length) {
+        emailPick.innerHTML = data.emails.map((e) =>
+          `<button type="button" class="chip teal" data-email="${esc(e)}">${esc(e)}</button>`).join('');
+        emailSuggBox.hidden = false;
+      }
+    } catch (e) { /* no published emails found — the commenter types one in */ }
+  }
+
+  emailPick.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-email]');
+    if (!btn) return;
+    addEmail.value = btn.dataset.email;
+    emailPick.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', 'false'));
+    btn.setAttribute('aria-pressed', 'true');
   });
 
-  if (signupForm) signupForm.addEventListener('submit', async (e) => {
+  function chooseItem(i) {
+    const it = items[i];
+    if (!it) return;
+    if (it.kind === 'local') {
+      window.location.href = `/b/${it.slug}`;
+      return;
+    }
+    if (it.kind === 'manual') {
+      closeDropdown();
+      addName.value = it.query;
+      addName.focus();
+      return;
+    }
+    selectPlace(it);
+  }
+
+  dropdown.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lookup-item');
+    if (!btn) return;
+    chooseItem(parseInt(btn.dataset.i, 10));
+  });
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearTimeout(debounceTimer);
+    if (q.length < 2) {
+      items = [];
+      closeDropdown();
+      return;
+    }
+    debounceTimer = setTimeout(() => runLookup(q), 300);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (dropdown.hidden) return;
+    const count = dropdown.querySelectorAll('.lookup-item').length;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive((activeIndex + 1) % count);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive((activeIndex - 1 + count) % count);
+    } else if (e.key === 'Enter') {
+      if (activeIndex >= 0) {
+        e.preventDefault();
+        chooseItem(activeIndex);
+      }
+    } else if (e.key === 'Escape') {
+      closeDropdown();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.lookup')) closeDropdown();
+  });
+
+  // Add a business (or open the existing one) and go to its page.
+  addForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const err = document.getElementById('signup-error');
+    const err = document.getElementById('add-error');
     hideError(err);
-    const btn = signupForm.querySelector('button[type="submit"]');
+    const btn = addForm.querySelector('button[type="submit"]');
     btn.disabled = true;
     try {
-      await api('/api/auth/signup', {
+      const data = await api('/api/businesses/find-or-create', {
         method: 'POST',
         body: JSON.stringify({
-          name: document.getElementById('signup-name').value,
-          email: document.getElementById('signup-email').value,
-          password: document.getElementById('signup-password').value,
+          name: addName.value,
+          email: addEmail.value,
+          place_id: addPlaceId.value || undefined,
         }),
       });
-      window.location.href = '/dashboard';
+      window.location.href = `/b/${data.business.slug}`;
     } catch (ex) { showError(err, ex); btn.disabled = false; }
   });
 
+  // Owner login (small, at the bottom of the page).
+  const loginForm = document.getElementById('login-form');
   if (loginForm) loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const err = document.getElementById('login-error');
@@ -159,7 +344,7 @@ function initHome() {
     } catch (ex) { showError(err, ex); btn.disabled = false; }
   });
 
-  // Discover feed
+  // Discover feed — latest comments across all businesses, newest first.
   const list = document.getElementById('discover-list');
   const empty = document.getElementById('discover-empty');
   if (list) {
@@ -171,14 +356,14 @@ function initHome() {
     }).catch(() => { empty.hidden = false; });
   }
 
-  // If already logged in, point the top nav at the dashboard.
+  // If already logged in, point the top nav at the inbox.
   api('/api/auth/me').then(() => {
     const nav = document.getElementById('authed-nav');
     if (nav) nav.hidden = false;
   }).catch(() => {});
 }
 
-/* ---------------- Public business page: form + feed ---------------- */
+/* ---------------- Public business page: claim banner, form + feed ---------------- */
 
 function initCardPage() {
   const slug = window.location.pathname.split('/').pop();
@@ -191,10 +376,11 @@ function initCardPage() {
   let offset = 0;
   let total = 0;
   let loaded = 0;
+  let bizName = '';
 
   function renderFeed(comments, append) {
     if (!append) feedEl.innerHTML = '';
-    feedEl.insertAdjacentHTML('beforeend', comments.map((c) => commentCardHTML(c)).join(''));
+    feedEl.insertAdjacentHTML('beforeend', comments.map((c) => commentCardHTML(c, { businessName: bizName })).join(''));
     loaded += comments.length;
     emptyEl.hidden = loaded > 0;
     loadMoreBtn.hidden = loaded >= total;
@@ -204,7 +390,9 @@ function initCardPage() {
     try {
       const data = await api(`/api/public/${encodeURIComponent(slug)}?limit=20&offset=${append ? offset : 0}`);
       if (!append) {
+        bizName = data.business.name;
         document.getElementById('biz-name').textContent = data.business.name;
+        document.getElementById('paper-biz').textContent = `For: ${data.business.name}`;
         document.title = `${data.business.name} — Comment Card`;
         const note = document.getElementById('welcome-note');
         if (data.business.welcome_note) {
@@ -215,6 +403,15 @@ function initCardPage() {
         total = data.total;
         offset = 0;
         loaded = 0;
+        // Unclaimed business: show the claim QR + copyable claim link.
+        if (!data.business.claimed && data.business.claim_url) {
+          const banner = document.getElementById('claim-banner');
+          banner.hidden = false;
+          document.getElementById('claim-link').textContent = data.business.claim_url;
+          const qr = document.getElementById('claim-qr');
+          if (data.business.claim_qr) qr.src = data.business.claim_qr;
+          else qr.remove();
+        }
       }
       offset += data.comments.length;
       renderFeed(data.comments, append);
@@ -227,6 +424,18 @@ function initCardPage() {
       loadMoreBtn.hidden = true;
     }
   }
+
+  const copyClaimBtn = document.getElementById('copy-claim-link');
+  if (copyClaimBtn) copyClaimBtn.addEventListener('click', async () => {
+    const link = document.getElementById('claim-link').textContent;
+    try {
+      await navigator.clipboard.writeText(link);
+      copyClaimBtn.textContent = 'Copied!';
+      setTimeout(() => { copyClaimBtn.textContent = 'Copy claim link'; }, 2000);
+    } catch (e) {
+      window.prompt('Copy the claim link:', link);
+    }
+  });
 
   // Chip groups (single-select)
   function chipGroup(id) {
@@ -280,8 +489,7 @@ function initCardPage() {
       kindChips.reset();
       areaChips.reset();
       thanks.classList.add('show');
-      // New comment appears at the top of the feed right away.
-      feedEl.insertAdjacentHTML('afterbegin', commentCardHTML(data.comment));
+      feedEl.insertAdjacentHTML('afterbegin', commentCardHTML(data.comment, { businessName: bizName }));
       emptyEl.hidden = true;
       total += 1;
       loaded += 1;
@@ -294,14 +502,15 @@ function initCardPage() {
   loadFeed(false);
 }
 
-/* ---------------- Dashboard ---------------- */
+/* ---------------- Dashboard: a simple inbox ---------------- */
 
 function initDashboard() {
   const inboxList = document.getElementById('inbox-list');
   const inboxEmpty = document.getElementById('inbox-empty');
-  const statsEl = document.getElementById('stats');
+  const countLine = document.getElementById('inbox-count');
   const errEl = document.getElementById('dash-error');
   let comments = [];
+  let bizName = '';
 
   function setTab(name) {
     document.querySelectorAll('.tab').forEach((t) =>
@@ -312,17 +521,6 @@ function initDashboard() {
   document.querySelectorAll('.tab').forEach((t) =>
     t.addEventListener('click', () => setTab(t.dataset.tab)));
 
-  async function loadStats() {
-    const s = await api('/api/comments/stats');
-    statsEl.innerHTML = `
-      <div class="stat"><div class="num">${s.total}</div><div class="lbl">Total cards</div></div>
-      <div class="stat"><div class="num">${s.unread}</div><div class="lbl">Unread</div></div>
-      <div class="stat"><div class="num">${s.mostMentionedArea ? esc(AREA_LABELS[s.mostMentionedArea] || s.mostMentionedArea) : '—'}</div><div class="lbl">Most mentioned area</div></div>
-      <div class="stat"><div class="num">${s.byKind.bugged || 0}</div><div class="lbl">Bugged me</div></div>
-      <div class="stat"><div class="num">${s.byKind.change || 0}</div><div class="lbl">I'd change</div></div>
-      <div class="stat"><div class="num">${s.byKind.idea || 0}</div><div class="lbl">Ideas</div></div>`;
-  }
-
   function renderInbox() {
     const statusF = document.getElementById('filter-status').value;
     const kindF = document.getElementById('filter-kind').value;
@@ -331,6 +529,8 @@ function initDashboard() {
       (!statusF || c.status === statusF) &&
       (!kindF || c.kind === kindF) &&
       (!q || (c.text + ' ' + (c.better_text || '') + ' ' + (c.name || '')).toLowerCase().includes(q)));
+    const fresh = comments.filter((c) => c.status === 'new').length;
+    countLine.innerHTML = `${comments.length} card${comments.length === 1 ? '' : 's'} so far · <b>${fresh} new</b> — read them, reply to the ones worth answering.`;
     inboxEmpty.hidden = shown.length > 0;
     inboxList.innerHTML = shown.map((c) => `
       <article class="inbox-item ${c.hidden ? 'is-hidden' : ''}">
@@ -344,6 +544,12 @@ function initDashboard() {
         <p class="comment-text">${esc(c.text)}</p>
         ${c.better_text ? `<p class="better"><b>What would have made it better:</b> ${esc(c.better_text)}</p>` : ''}
         <div class="byline">${c.name ? `— ${esc(c.name)}` : 'Anonymous'}${c.visit_frequency && VISIT_LABELS[c.visit_frequency] ? ' · ' + esc(VISIT_LABELS[c.visit_frequency]) : ''}${c.contact ? ` · Reply: ${esc(c.contact)}` : ''}</div>
+        ${repliesHTML(c, bizName)}
+        <div class="reply-box">
+          <label for="reply-${c.id}">Reply to this card <span class="hint">— shows publicly, under their comment</span></label>
+          <textarea id="reply-${c.id}" placeholder="Answer them straight."></textarea>
+          <button class="btn teal small" data-reply="${c.id}" type="button">Reply publicly</button>
+        </div>
         <div class="actions">
           ${c.status !== 'noted' ? `<button class="btn small quiet" data-act="noted" data-id="${c.id}">Mark noted</button>` : ''}
           ${c.status !== 'acted_on' ? `<button class="btn small quiet" data-act="acted_on" data-id="${c.id}">Mark acted on</button>` : ''}
@@ -360,6 +566,21 @@ function initDashboard() {
   }
 
   inboxList.addEventListener('click', async (e) => {
+    const replyBtn = e.target.closest('button[data-reply]');
+    if (replyBtn) {
+      const id = replyBtn.dataset.reply;
+      const ta = document.getElementById(`reply-${id}`);
+      const text = ta.value.trim();
+      if (!text) { showError(errEl, new Error('Write your reply first.')); return; }
+      hideError(errEl);
+      replyBtn.disabled = true;
+      try {
+        await api(`/api/comments/${id}/replies`, { method: 'POST', body: JSON.stringify({ text }) });
+        await loadComments();
+      } catch (ex) { showError(errEl, ex); }
+      replyBtn.disabled = false;
+      return;
+    }
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const id = btn.dataset.id;
@@ -377,7 +598,6 @@ function initDashboard() {
         await api(`/api/comments/${id}`, { method: 'PATCH', body: JSON.stringify({ status: act }) });
       }
       await loadComments();
-      await loadStats();
     } catch (ex) { showError(errEl, ex); }
   });
 
@@ -409,6 +629,7 @@ function initDashboard() {
         }),
       });
       document.getElementById('settings-saved').classList.add('show');
+      bizName = data.business.name;
       document.getElementById('dash-biz-name').textContent = data.business.name;
       document.getElementById('public-link').textContent =
         `${window.location.origin}/b/${data.business.slug}`;
@@ -429,14 +650,61 @@ function initDashboard() {
 
   // Boot
   api('/api/auth/me').then(async (data) => {
+    bizName = data.business.name;
     document.getElementById('dash-biz-name').textContent = data.business.name;
     document.getElementById('public-link').textContent =
       `${window.location.origin}/b/${data.business.slug}`;
     document.getElementById('settings-name').value = data.business.name;
     document.getElementById('settings-note').value = data.business.welcome_note || '';
-    await loadStats();
     await loadComments();
   }).catch(() => { window.location.href = '/'; });
+}
+
+/* ---------------- Claim page ---------------- */
+
+function initClaim() {
+  const token = window.location.pathname.split('/').pop();
+  const loading = document.getElementById('claim-loading');
+  const main = document.getElementById('claim-main');
+  const invalid = document.getElementById('claim-invalid');
+  const claimed = document.getElementById('claim-claimed');
+
+  api(`/api/claim/${encodeURIComponent(token)}`).then((data) => {
+    loading.hidden = true;
+    if (data.business.claimed) {
+      claimed.hidden = false;
+      return;
+    }
+    main.hidden = false;
+    document.getElementById('claim-heading').textContent =
+      `Someone left ${data.business.name} a comment`;
+    document.getElementById('claim-intro').textContent =
+      `A customer left a comment for ${data.business.name} on Comment Card. Claim the page to read it and answer them.`;
+    document.getElementById('claim-name').value = data.business.name;
+    document.getElementById('claim-email').value = data.business.email;
+  }).catch(() => {
+    loading.hidden = true;
+    invalid.hidden = false;
+  });
+
+  document.getElementById('claim-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('claim-error');
+    hideError(err);
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      await api(`/api/claim/${encodeURIComponent(token)}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: document.getElementById('claim-name').value,
+          email: document.getElementById('claim-email').value,
+          password: document.getElementById('claim-password').value,
+        }),
+      });
+      window.location.href = '/dashboard';
+    } catch (ex) { showError(err, ex); btn.disabled = false; }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -444,4 +712,5 @@ document.addEventListener('DOMContentLoaded', () => {
   if (page === 'home') initHome();
   else if (page === 'card') initCardPage();
   else if (page === 'dashboard') initDashboard();
+  else if (page === 'claim') initClaim();
 });

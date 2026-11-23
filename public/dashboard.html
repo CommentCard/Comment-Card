@@ -2,13 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dashboard — Comment Card</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Your inbox — Comment Card</title>
+  <link rel="icon" href="/logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Caveat:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body data-page="dashboard">
   <header class="topbar">
-    <a class="brand" href="/">Comment <span>Card</span></a>
+    <a class="brand" href="/"><img class="brand-logo" src="/logo.webp" alt="Comment Card logo"><span class="brand-name">Comment <span>Card</span></span></a>
     <nav>
       <span class="biz-name" id="dash-biz-name"></span>
       <button class="btn small ghost" id="logout-btn" type="button">Log out</button>
@@ -16,8 +20,13 @@
   </header>
 
   <main class="wrap wide">
-    <h1>Your inbox</h1>
-    <p class="lede">Everything customers have said — private to you. The public feed shows the same suggestions, minus anything you've archived or hidden.</p>
+    <div class="dash-hero">
+      <h1>Here's what your customers are telling you</h1>
+      <p>Every card below is a customer being straight with you — what bugged them, what they'd change, or an idea. Read them, reply to the ones worth answering, and hide anything off-topic.</p>
+      <span class="hand">answer them straight</span>
+    </div>
+
+    <p class="count-line" id="inbox-count"></p>
 
     <div class="tabs" role="tablist">
       <button class="tab" data-tab="inbox" aria-selected="true" type="button">Inbox</button>
@@ -25,8 +34,6 @@
     </div>
 
     <div id="tab-inbox">
-      <div class="stats-grid" id="stats"></div>
-
       <div class="filters">
         <select id="filter-status" aria-label="Filter by status">
           <option value="">All statuses</option>
@@ -59,7 +66,7 @@
           <textarea id="settings-note" maxlength="500" placeholder="e.g. We read every card. Tell us straight — it helps more than a star rating."></textarea>
           <div class="error" id="settings-error"></div>
           <div class="success" id="settings-saved">Saved.</div>
-          <button class="btn" type="submit">Save settings</button>
+          <button class="btn teal" type="submit">Save settings</button>
         </form>
       </section>
 
@@ -68,12 +75,11 @@
         <p class="muted">Share this anywhere — receipts, table cards, social media, your website. Anyone who opens it can read your suggestions and leave their own. No login needed.</p>
         <div class="linkbox"><code id="public-link"></code></div>
         <p style="margin-top:12px"><button class="btn ghost small" id="copy-link" type="button">Copy link</button></p>
-        <p class="tiny">Tip: paste the link into any free QR code generator to print a table card customers can scan.</p>
       </section>
     </div>
   </main>
 
-  <footer>Comment Card — customer insight, not reviews.</footer>
+  <footer><span class="hand">Comment Card</span> — the feedback customers actually mean.</footer>
   <script src="/app.js"></script>
 </body>
 </html>

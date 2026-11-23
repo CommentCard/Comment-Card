@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Claim your page — Comment Card</title>
+  <link rel="icon" href="/logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Caveat:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-page="claim">
+  <header class="topbar">
+    <a class="brand" href="/"><img class="brand-logo" src="/logo.webp" alt="Comment Card logo"><span class="brand-name">Comment <span>Card</span></span></a>
+    <nav><a class="btn small ghost" href="/">Find a business</a></nav>
+  </header>
+
+  <main class="claim-wrap">
+    <div class="card claim-card" id="claim-loading">
+      <p class="muted">Checking your claim link…</p>
+    </div>
+
+    <div class="card claim-card" id="claim-main" hidden>
+      <span class="stamp">Claim your page</span>
+      <h1 id="claim-heading">Someone left you a comment</h1>
+      <p class="lede" id="claim-intro"></p>
+      <p class="muted">Set a password for your business account and the page is yours — you'll go straight to your inbox, where you can read the comment and reply to it in public.</p>
+      <form id="claim-form" novalidate>
+        <label for="claim-name">Business name</label>
+        <input id="claim-name" type="text" maxlength="120" required>
+        <label for="claim-email">Email <span class="hint">— the one we wrote to; it can't be changed here</span></label>
+        <input id="claim-email" type="email" readonly>
+        <label for="claim-password">Choose a password <span class="hint">— at least 8 characters</span></label>
+        <input id="claim-password" type="password" autocomplete="new-password" required minlength="8">
+        <div class="error" id="claim-error"></div>
+        <button class="btn block" type="submit">Claim my page &amp; see the comment</button>
+      </form>
+    </div>
+
+    <div class="card claim-card" id="claim-invalid" hidden>
+      <h1>That claim link doesn't work</h1>
+      <p class="muted">It may have been used already, or the link was copied wrong. Check the email we sent, or the QR code on your public page, and try again.</p>
+      <p><a class="btn" href="/">Back to Comment Card</a></p>
+    </div>
+
+    <div class="card claim-card" id="claim-claimed" hidden>
+      <h1>This page is already claimed</h1>
+      <p class="muted">Someone at this business already claimed it. Log in with the business account to see the inbox.</p>
+      <p><a class="btn teal" href="/#owner-login">Log in</a></p>
+    </div>
+  </main>
+
+  <footer><span class="hand">Comment Card</span> — the feedback customers actually mean.</footer>
+  <script src="/app.js"></script>
+</body>
+</html>

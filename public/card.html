@@ -2,15 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Comment Card</title>
-  <meta name="description" content="Leave a private comment for this business — what bugged you, what you'd change, or an idea.">
+  <meta name="description" content="Leave a comment for this business — what bugged you, what you'd change, or an idea.">
+  <link rel="icon" href="/logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Caveat:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body data-page="card">
   <header class="topbar">
-    <a class="brand" href="/">Comment <span>Card</span></a>
-    <nav><a class="btn small ghost" href="/">For businesses</a></nav>
+    <a class="brand" href="/"><img class="brand-logo" src="/logo.webp" alt="Comment Card logo"><span class="brand-name">Comment <span>Card</span></span></a>
+    <nav><a class="btn small ghost" href="/">Find another place</a></nav>
   </header>
 
   <main class="wrap">
@@ -18,52 +22,85 @@
     <p class="lede" id="welcome-note" hidden></p>
     <p class="muted" id="biz-missing" hidden>We couldn't find that business. Check the link and try again.</p>
 
-    <section class="card paper-card" aria-label="Leave a comment">
-      <h2>Leave a comment</h2>
-      <p class="muted">Not a review — just tell them what bugged you, what you'd change, or an idea. It shows up on their public suggestions feed right away.</p>
-      <form id="comment-form" novalidate>
-        <label>What kind of comment is this?</label>
-        <div class="chips" id="kind-chips">
-          <button type="button" class="chip" data-value="bugged" aria-pressed="false">Something bugged me</button>
-          <button type="button" class="chip" data-value="change" aria-pressed="false">Something I'd change</button>
-          <button type="button" class="chip" data-value="idea" aria-pressed="false">An idea</button>
-        </div>
+    <section class="claim-banner" id="claim-banner" hidden aria-label="Claim this page">
+      <div class="qr">
+        <img id="claim-qr" alt="QR code to claim this business page">
+        <p class="tiny">Scan to claim</p>
+      </div>
+      <div class="claim-body">
+        <h2>This business hasn't claimed their page yet</h2>
+        <p class="muted">Comments still show up here — but nobody at the business can answer them yet. Are you the owner? Scan the code or follow the link to claim this page, then you can reply to every card.</p>
+        <div class="linkbox"><code id="claim-link"></code></div>
+        <p><button class="btn small teal" id="copy-claim-link" type="button">Copy claim link</button></p>
+      </div>
+    </section>
 
-        <label>Which part of your visit is it about?</label>
-        <div class="chips" id="area-chips">
-          <button type="button" class="chip" data-value="service" aria-pressed="false">Service</button>
-          <button type="button" class="chip" data-value="wait-time" aria-pressed="false">Wait time</button>
-          <button type="button" class="chip" data-value="price" aria-pressed="false">Price</button>
-          <button type="button" class="chip" data-value="cleanliness" aria-pressed="false">Cleanliness</button>
-          <button type="button" class="chip" data-value="food-quality" aria-pressed="false">Food / product quality</button>
-          <button type="button" class="chip" data-value="staff" aria-pressed="false">Staff</button>
-          <button type="button" class="chip" data-value="other" aria-pressed="false">Something else</button>
-        </div>
+    <section class="paper" aria-label="Leave a comment">
+      <div class="holes" aria-hidden="true"><i></i><i></i></div>
+      <div class="paper-inner">
+        <p class="biz" id="paper-biz">For: this business</p>
+        <h2>Drop us a comment card</h2>
+        <p class="welcome">Not a review — just tell them what bugged you, what you'd change, or an idea. It shows up on their public feed right away.</p>
+        <form id="comment-form" novalidate>
+          <fieldset style="border:0;margin:0 0 20px;padding:0">
+            <legend style="font-weight:700;font-size:.92rem;margin:0 0 9px">What kind of comment is this?</legend>
+            <div class="chips" id="kind-chips">
+              <button type="button" class="chip" data-value="bugged" aria-pressed="false">Something bugged me</button>
+              <button type="button" class="chip" data-value="change" aria-pressed="false">Something I'd change</button>
+              <button type="button" class="chip" data-value="idea" aria-pressed="false">An idea</button>
+            </div>
+          </fieldset>
 
-        <label for="comment-text">Your comment</label>
-        <textarea id="comment-text" placeholder="Tell them straight — what happened, and what bothered you?" maxlength="2000" required></textarea>
+          <fieldset style="border:0;margin:0 0 20px;padding:0">
+            <legend style="font-weight:700;font-size:.92rem;margin:0 0 9px">What part of your visit is it about?</legend>
+            <div class="chips" id="area-chips">
+              <button type="button" class="chip teal" data-value="service" aria-pressed="false">Service</button>
+              <button type="button" class="chip teal" data-value="wait-time" aria-pressed="false">Wait time</button>
+              <button type="button" class="chip teal" data-value="price" aria-pressed="false">Price</button>
+              <button type="button" class="chip teal" data-value="cleanliness" aria-pressed="false">Cleanliness</button>
+              <button type="button" class="chip teal" data-value="food-quality" aria-pressed="false">Food / product quality</button>
+              <button type="button" class="chip teal" data-value="staff" aria-pressed="false">Staff</button>
+              <button type="button" class="chip teal" data-value="other" aria-pressed="false">Something else</button>
+            </div>
+          </fieldset>
 
-        <label for="better-text">What would have made it better? <span class="hint">— optional</span></label>
-        <textarea id="better-text" style="min-height:64px" placeholder="e.g. A second till open at lunch would have fixed it." maxlength="1000"></textarea>
+          <div class="field" style="margin-bottom:20px">
+            <label for="comment-text">Your comment</label>
+            <textarea id="comment-text" class="handwrite" placeholder="The line was out the door and only one register was open…" maxlength="2000" required></textarea>
+            <p class="hint">Plain words are perfect. Specific beats polite</p>
+          </div>
 
-        <label for="visit-frequency">How often do you come here?</label>
-        <select id="visit-frequency">
-          <option value="">Prefer not to say</option>
-          <option value="first-time">First visit</option>
-          <option value="sometimes">Sometimes</option>
-          <option value="regular">Regular</option>
-        </select>
+          <div class="field" style="margin-bottom:20px">
+            <label for="better-text">What would have made it better? <span class="hint">— optional</span></label>
+            <textarea id="better-text" style="min-height:64px" placeholder="e.g. A second till open at lunch would have fixed it." maxlength="1000"></textarea>
+          </div>
 
-        <label for="commenter-name">Your name <span class="hint">— optional, shown with your suggestion</span></label>
-        <input id="commenter-name" type="text" placeholder="Leave blank to stay anonymous" maxlength="80">
+          <div class="field" style="margin-bottom:20px">
+            <label for="visit-frequency">How often do you come here?</label>
+            <select id="visit-frequency">
+              <option value="">Prefer not to say</option>
+              <option value="first-time">First visit</option>
+              <option value="sometimes">Sometimes</option>
+              <option value="regular">Regular</option>
+            </select>
+          </div>
 
-        <label for="commenter-contact">How can they reach you? <span class="hint">— optional, only the business sees this</span></label>
-        <input id="commenter-contact" type="text" placeholder="Email or phone — only if you want a reply" maxlength="160">
+          <div class="field" style="margin-bottom:20px">
+            <label for="commenter-name">Your name <span class="hint">— optional, shown with your comment</span></label>
+            <input id="commenter-name" type="text" placeholder="Leave blank to stay anonymous" maxlength="80">
+          </div>
 
-        <div class="error" id="form-error"></div>
-        <div class="success" id="thanks">Thanks — your suggestion is on their public feed now.</div>
-        <button class="btn block" type="submit">Leave my comment</button>
-      </form>
+          <div class="field" style="margin-bottom:20px">
+            <label for="commenter-contact">How can they reach you? <span class="hint">— optional, only the business sees this</span></label>
+            <input id="commenter-contact" type="text" placeholder="Email or phone — only if you want a reply" maxlength="160">
+          </div>
+
+          <div class="error" id="form-error"></div>
+          <div class="success" id="thanks">Thanks — your card is on their public feed now.</div>
+          <button class="btn block" type="submit">Drop it in the box</button>
+          <span class="hand-note">the stuff people say on the drive home, captured ↓</span>
+        </form>
+      </div>
     </section>
 
     <section aria-label="Suggestions">
@@ -74,7 +111,7 @@
     </section>
   </main>
 
-  <footer>Comment Card — customer insight, not reviews.</footer>
+  <footer><span class="hand">Comment Card</span> — the feedback customers actually mean.</footer>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -2,71 +2,96 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Comment Card — honest feedback, not reviews</title>
-  <meta name="description" content="Comment Card lets customers leave a business private, honest comments about what they'd change — no stars, no public reviews.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Comment Card — Got something to say about that place? Say it.</title>
+  <meta name="description" content="Comment Card lets customers tell a business what they'd change — honest and out in the open. No stars, no reviews.">
+  <link rel="icon" href="/logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Caveat:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body data-page="home">
   <header class="topbar">
-    <a class="brand" href="/">Comment <span>Card</span></a>
+    <a class="brand" href="/"><img class="brand-logo" src="/logo.webp" alt="Comment Card logo"><span class="brand-name">Comment <span>Card</span></span></a>
     <nav>
-      <span id="authed-nav" hidden><a class="btn small" href="/dashboard">My dashboard</a></span>
+      <span id="authed-nav" hidden><a class="btn small teal" href="/dashboard">My inbox</a></span>
+      <a class="btn small ghost" href="#owner-login">Own a business?</a>
     </nav>
   </header>
 
+  <section class="hero-band">
+    <p class="kicker">Comment Card — real feedback, not reviews</p>
+    <h1>Got something to say about that place? <em>Say it.</em></h1>
+    <p class="sub">Reviews are public and permanent, so most people stay quiet. A comment card is the opposite: a short, honest note to the business about what bugged you, what you'd change, or an idea — and the owner can answer you right back.</p>
+    <span class="hand">no stars, no audience — just honest, the way you'd say it in person ↓</span>
+  </section>
+
   <main class="wrap">
-    <section class="hero">
-      <h1>Honest feedback, not reviews.</h1>
-      <p class="tagline">Comment Card gives customers a simple card to say what bugged them, what they'd change, or an idea they have — and gives each business a public feed of suggestions to scroll through, plus a private dashboard to act on them.</p>
+    <section class="card" aria-label="Find a business">
+      <h2>Find a place to comment on</h2>
+      <p class="muted">Type a business name — pick it from the list, or add it yourself if it's not there yet.</p>
+
+      <div class="lookup">
+        <label for="lookup-input" style="position:absolute;left:-9999px">Search for a business</label>
+        <input id="lookup-input" type="text" placeholder="Type a business name…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="lookup-results" aria-autocomplete="list">
+        <ul class="lookup-results" id="lookup-results" role="listbox" hidden></ul>
+      </div>
+
+      <form id="add-business-form" novalidate>
+        <p class="tiny" id="add-heading" style="margin:16px 0 0"><b>Don't see it? Add the business:</b></p>
+        <label for="add-name">Business name</label>
+        <input id="add-name" type="text" placeholder="e.g. Harbor Lane Bakery" required maxlength="120">
+        <p class="muted" id="add-address" hidden></p>
+        <label for="add-email">Business email <span class="hint">— so we can tell them they have a comment</span></label>
+        <input id="add-email" type="email" placeholder="e.g. hello@harborlanebakery.com" required maxlength="160">
+        <p class="website-line" id="add-website" hidden></p>
+        <div id="email-suggestions" hidden>
+          <p class="tiny" style="margin:10px 0 0">We found these addresses published on their website — pick one, or type your own:</p>
+          <div class="email-pick" id="email-pick"></div>
+        </div>
+        <input id="add-place-id" type="hidden">
+        <div class="error" id="add-error"></div>
+        <button class="btn block" type="submit">Start a card for this business</button>
+        <p class="tiny center" style="margin-top:10px">Google doesn't publish business emails, so if we can't find one on their website, you'll type it in — it only ever goes to the business.</p>
+      </form>
     </section>
 
-    <section class="card">
-      <h2 id="auth-heading">Create your business account</h2>
-      <p class="muted">Your business gets its own public page and its own private inbox. Free to start — you host it yourself.</p>
-
-      <form id="signup-form" novalidate>
-        <label for="signup-name">Business name</label>
-        <input id="signup-name" type="text" autocomplete="organization" placeholder="e.g. Harbor Lane Bakery" required maxlength="120">
-        <label for="signup-email">Email</label>
-        <input id="signup-email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required maxlength="160">
-        <label for="signup-password">Password <span class="hint">— at least 8 characters</span></label>
-        <input id="signup-password" type="password" autocomplete="new-password" required minlength="8">
-        <div class="error" id="signup-error"></div>
-        <button class="btn block" type="submit">Create my Comment Card</button>
-        <p class="tiny center" style="margin-top:12px">Already have an account? <a href="#" id="show-login">Log in</a></p>
-      </form>
-
-      <form id="login-form" hidden novalidate>
-        <label for="login-email">Email</label>
-        <input id="login-email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required maxlength="160">
-        <label for="login-password">Password</label>
-        <input id="login-password" type="password" autocomplete="current-password" required>
-        <div class="error" id="login-error"></div>
-        <button class="btn block" type="submit">Log in</button>
-        <p class="tiny center" style="margin-top:12px">New here? <a href="#" id="show-signup">Create an account</a></p>
-      </form>
+    <section aria-label="Latest comments">
+      <h2>Fresh off the card</h2>
+      <p class="muted">The latest comments customers are leaving — and what businesses are saying back. Newest first.</p>
+      <ul class="feed" id="discover-list"></ul>
+      <div class="empty" id="discover-empty" hidden>
+        <h3>No comments yet</h3>
+        <p>Be the first — find a business above and drop the card you've been meaning to write.</p>
+      </div>
     </section>
 
     <section class="card">
       <h2>How it works</h2>
       <ol class="steps">
-        <li><b>Your business signs up</b> and gets a public link, like <code>commentcard.app/b/harbor-lane-bakery</code>. Print it on a receipt or a table card, or share it anywhere.</li>
-        <li><b>Customers open the link</b>, scroll through other people's suggestions, and leave their own — what bugged them, what they'd change, or an idea.</li>
-        <li><b>Suggestions show up in public</b> right away, like scrolling through comments. The business sees them too, in a private dashboard, and can mark them noted, acted on, or hide anything off-topic.</li>
+        <li><b>You find the place</b> and drop a card — what bugged you, what you'd change, or an idea.</li>
+        <li><b>It shows up in public</b> right away, like scrolling through comments. We email the business so they know it's there.</li>
+        <li><b>The owner claims the page</b> and answers you — out in the open, where everyone can see the good ones.</li>
       </ol>
       <p class="muted">No stars. No public review pages. Just the honest stuff a business needs to hear.</p>
     </section>
 
-    <section>
-      <h2>Latest suggestions from businesses on Comment Card</h2>
-      <p class="muted">A public scroll of what customers are saying — and what businesses are hearing.</p>
-      <ul class="feed" id="discover-list"></ul>
-      <div class="empty" id="discover-empty" hidden>No suggestions yet — be the first business to get a card.</div>
+    <section class="card" id="owner-login" aria-label="Business owner login">
+      <h2>Own a business?</h2>
+      <p class="muted">Log in to see what your customers are telling you — and answer them. No signup needed first: your page is created the moment someone leaves you a comment, and we email you a link to claim it.</p>
+      <form id="login-form" novalidate>
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required maxlength="160">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" required>
+        <div class="error" id="login-error"></div>
+        <button class="btn teal block" type="submit">Log in to my inbox</button>
+      </form>
     </section>
   </main>
 
-  <footer>Comment Card — customer insight, not reviews.</footer>
+  <footer><span class="hand">Comment Card</span> — the feedback customers actually mean.</footer>
   <script src="/app.js"></script>
 </body>
 </html>
