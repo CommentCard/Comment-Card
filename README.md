@@ -119,6 +119,27 @@ it in automatically, and the business's website link is shown next to the
 email field so the commenter can find the address there if needed. The
 commenter can always correct the email before posting.
 
+**Localized, nearest first.** The lookup asks the visitor's browser for
+their location (with permission) and sorts results nearest first, showing
+the distance ("4.9 mi away"). Google gets a 25 km location bias;
+Nominatim searches a tight box around the searcher first and widens it
+only if few results come back, with the searcher's area named in the query
+as a fallback — otherwise a big city's matches crowd out the local ones.
+Without location, search works as before, just unsorted. A far-away
+search still works: the box keeps widening until something is found.
+
+**20-mile rule.** Comments only come from within 20 miles of the
+business, to keep out-of-area spam out. The business's coordinates are
+stored when its page is created (from the lookup result, or geocoded from
+its name/address); the commenter's location rides along with the form.
+Posting from farther than 20 miles — or without sharing a location — is
+refused with a plain message. If a business's location can't be found at
+all, its comments are accepted (the rule can't be checked). Change the
+distance with the `COMMENT_MAX_MILES` env var. One honest limit: a
+location sent by a browser can be faked by someone determined enough to
+do it on purpose — this stops casual overseas spam, not a deliberate
+attacker.
+
 ### Google Places API key setup
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a

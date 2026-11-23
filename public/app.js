@@ -27,6 +27,22 @@ const STATUS_LABELS = {
   archived: 'Archived',
 };
 
+// One-shot browser location, promise-based. Resolves { lat, lng } or null
+// (denied, unavailable, or timed out). Cached — the browser asks once.
+let locPromise = null;
+function getLocation() {
+  if (locPromise) return locPromise;
+  locPromise = new Promise((resolve) => {
+    if (!('geolocation' in navigator)) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: 8000, maximumAge: 600000 },
+    );
+  });
+  return locPromise;
+}
+
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
@@ -134,6 +150,23 @@ function initHome() {
   let activeIndex = -1;
   let debounceTimer = null;
   let lookupSeq = 0; // ignore stale responses
+  let locationUsed = false;
+  let selectedPlace = null; // lookup result the form was filled from, with its coords
+  let userLoc = null; // { lat, lng } once the browser shares it
+  let locRequested = false;
+
+  // Ask the browser for the user's location (once, on first typing) so
+  // results can be sorted nearest first. Denied/unavailable is fine —
+  // search works without it, just unsorted.
+  function ensureLocation() {
+    if (locRequested || !('geolocation' in navigator)) return;
+    locRequested = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { userLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; },
+      () => { userLoc = null; },
+      { timeout: 5000, maximumAge: 600000 },
+    );
+  }
 
   function closeDropdown() {
     dropdown.hidden = true;
@@ -162,14 +195,17 @@ function initHome() {
       input.setAttribute('aria-expanded', 'false');
       return;
     }
-    dropdown.innerHTML = items.map((it, i) => {
+    const note = (locationUsed && items.some((it) => it.kind === 'place'))
+      ? '<li class="lookup-note">Nearest first — based on your location</li>' : '';
+    dropdown.innerHTML = note + items.map((it, i) => {
       if (it.kind === 'manual') {
         return `<li><button type="button" class="lookup-item" role="option" data-i="${i}"><span class="name">No matches — add “${esc(it.query)}” manually</span><span class="addr">We'll start a fresh page for this business.</span></button></li>`;
       }
       if (it.kind === 'local') {
         return `<li><button type="button" class="lookup-item" role="option" data-i="${i}"><span class="name">${esc(it.name)}<span class="tag on-card">On Comment Card</span></span><span class="addr">Already has a page — open it and leave a card.</span></button></li>`;
       }
-      return `<li><button type="button" class="lookup-item" role="option" data-i="${i}"><span class="name">${esc(it.name)}</span><span class="addr">${esc(it.address || '')}</span></button></li>`;
+      const dist = (it.distanceMi != null) ? ` · ${it.distanceMi} mi away` : '';
+      return `<li><button type="button" class="lookup-item" role="option" data-i="${i}"><span class="name">${esc(it.name)}</span><span class="addr">${esc(it.address || '')}${dist}</span></button></li>`;
     }).join('');
     dropdown.hidden = false;
     input.setAttribute('aria-expanded', 'true');
@@ -179,11 +215,14 @@ function initHome() {
   async function runLookup(query) {
     const seq = ++lookupSeq;
     renderDropdown(true);
+    const placesUrl = `/api/places/search?query=${encodeURIComponent(query)}`
+      + (userLoc ? `&lat=${userLoc.lat}&lng=${userLoc.lng}` : '');
     const [local, cascade] = await Promise.all([
       api(`/api/businesses/search?q=${encodeURIComponent(query)}`).catch(() => ({ businesses: [] })),
-      api(`/api/places/search?query=${encodeURIComponent(query)}`).catch(() => ({ results: [] })),
+      api(placesUrl).catch(() => ({ results: [] })),
     ]);
     if (seq !== lookupSeq) return; // a newer keystroke already superseded this
+    locationUsed = !!cascade.locationUsed;
     items = [];
     for (const b of (local.businesses || [])) {
       items.push({ kind: 'local', slug: b.slug, name: b.name });
@@ -199,6 +238,7 @@ function initHome() {
   // known, scan it for email addresses the business publishes itself.
   async function selectPlace(it) {
     closeDropdown();
+    selectedPlace = it;
     addName.value = it.name || '';
     addPlaceId.value = it.placeId || '';
     addAddress.hidden = !it.address;
@@ -257,6 +297,7 @@ function initHome() {
     }
     if (it.kind === 'manual') {
       closeDropdown();
+      selectedPlace = null;
       addName.value = it.query;
       addName.focus();
       return;
@@ -271,6 +312,7 @@ function initHome() {
   });
 
   input.addEventListener('input', () => {
+    ensureLocation();
     const q = input.value.trim();
     clearTimeout(debounceTimer);
     if (q.length < 2) {
@@ -304,6 +346,9 @@ function initHome() {
     if (!e.target.closest('.lookup')) closeDropdown();
   });
 
+  // If the name is edited after picking a place, the pick no longer applies.
+  addName.addEventListener('input', () => { selectedPlace = null; addPlaceId.value = ''; });
+
   // Add a business (or open the existing one) and go to its page.
   addForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -318,6 +363,9 @@ function initHome() {
           name: addName.value,
           email: addEmail.value,
           place_id: addPlaceId.value || undefined,
+          lat: selectedPlace ? selectedPlace.lat : undefined,
+          lng: selectedPlace ? selectedPlace.lng : undefined,
+          address: selectedPlace ? selectedPlace.address : undefined,
         }),
       });
       window.location.href = `/b/${data.business.slug}`;
@@ -473,12 +521,16 @@ function initCardPage() {
     const btn = form.querySelector('button[type="submit"]');
     btn.disabled = true;
     try {
+      // The 20-mile rule: the commenter's location rides along with the card.
+      const loc = await getLocation();
       const data = await api(`/api/public/${encodeURIComponent(slug)}/comments`, {
         method: 'POST',
         body: JSON.stringify({
           kind,
           area,
           text,
+          lat: loc ? loc.lat : undefined,
+          lng: loc ? loc.lng : undefined,
           better_text: document.getElementById('better-text').value,
           visit_frequency: document.getElementById('visit-frequency').value,
           name: document.getElementById('commenter-name').value,

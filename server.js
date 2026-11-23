@@ -55,6 +55,10 @@ if (process.env.SMTP_HOST) {
 // browser never sees it. Without a key the lookup falls back to Nominatim.
 const PLACES_KEY = process.env.GOOGLE_PLACES_API_KEY || '';
 
+// Comments only come from within this many miles of the business, to keep
+// out-of-area spam out. Override with COMMENT_MAX_MILES.
+const COMMENT_MAX_MILES = parseFloat(process.env.COMMENT_MAX_MILES || '20') || 20;
+
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 // ---------------------------------------------------------------------------
@@ -73,6 +77,9 @@ db.exec(`
     email         TEXT NOT NULL UNIQUE,
     password_hash TEXT,
     place_id      TEXT,
+    lat           REAL,
+    lng           REAL,
+    address       TEXT,
     claimed       INTEGER NOT NULL DEFAULT 0,
     claim_token   TEXT,
     welcome_note  TEXT NOT NULL DEFAULT '',
@@ -140,6 +147,9 @@ db.exec(`
         email         TEXT NOT NULL UNIQUE,
         password_hash TEXT,
         place_id      TEXT,
+        lat           REAL,
+        lng           REAL,
+        address       TEXT,
         claimed       INTEGER NOT NULL DEFAULT 0,
         claim_token   TEXT,
         welcome_note  TEXT NOT NULL DEFAULT '',
@@ -163,6 +173,15 @@ db.exec(`
   }
   if (!names.has('place_id')) {
     db.exec('ALTER TABLE businesses ADD COLUMN place_id TEXT');
+  }
+  if (!names.has('lat')) {
+    db.exec('ALTER TABLE businesses ADD COLUMN lat REAL');
+  }
+  if (!names.has('lng')) {
+    db.exec('ALTER TABLE businesses ADD COLUMN lng REAL');
+  }
+  if (!names.has('address')) {
+    db.exec('ALTER TABLE businesses ADD COLUMN address TEXT');
   }
 })();
 
@@ -365,15 +384,22 @@ function rateLimit(max, windowMs) {
 // own website (for published emails). Never scrapes Google or Yelp.
 // ---------------------------------------------------------------------------
 
-async function searchPlaces(query) {
+async function searchPlaces(query, loc) {
+  const body = { textQuery: query, maxResultCount: loc ? 10 : 5 };
+  if (loc) {
+    // Bias toward places near the searcher (25 km circle) — nearest first.
+    body.locationBias = {
+      circle: { center: { latitude: loc.lat, longitude: loc.lng }, radius: 25000.0 },
+    };
+  }
   const res = await fetchWithTimeout('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': PLACES_KEY,
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress',
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location',
     },
-    body: JSON.stringify({ textQuery: query, maxResultCount: 5 }),
+    body: JSON.stringify(body),
   }, 6000);
   if (!res.ok) throw new Error(`Places search failed: HTTP ${res.status}`);
   const data = await res.json();
@@ -383,6 +409,8 @@ async function searchPlaces(query) {
       placeId: p.id,
       name: (p.displayName && p.displayName.text) || '',
       address: p.formattedAddress || '',
+      lat: p.location ? p.location.latitude : null,
+      lng: p.location ? p.location.longitude : null,
     }))
     .filter((r) => r.name);
 }
@@ -390,26 +418,29 @@ async function searchPlaces(query) {
 // Nominatim (OpenStreetMap) — free, no key. Usage policy: identify the app
 // in the User-Agent, max 1 request/second, short timeout.
 let lastNominatimAt = 0;
-async function searchNominatim(query) {
-  const wait = 1000 - (Date.now() - lastNominatimAt);
-  if (wait > 0) await sleep(wait);
-  lastNominatimAt = Date.now();
-  const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+async function searchNominatim(query, loc) {
+  const doSearch = async (p) => {
+    const wait = 1000 - (Date.now() - lastNominatimAt);
+    if (wait > 0) await sleep(wait);
+    lastNominatimAt = Date.now();
+    const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams(p);
+    const res = await fetchWithTimeout(url, {
+      headers: {
+        'User-Agent': 'Comment Card (business lookup; contact hello@commentcard.app)',
+        'Accept-Language': 'en',
+      },
+    }, 5000);
+    if (!res.ok) throw new Error(`Nominatim search failed: HTTP ${res.status}`);
+    return res.json();
+  };
+  const base = {
     q: query,
     format: 'jsonv2',
     addressdetails: '1',
     extratags: '1',
-    limit: '5',
-  });
-  const res = await fetchWithTimeout(url, {
-    headers: {
-      'User-Agent': 'Comment Card (business lookup; contact hello@commentcard.app)',
-      'Accept-Language': 'en',
-    },
-  }, 5000);
-  if (!res.ok) throw new Error(`Nominatim search failed: HTTP ${res.status}`);
-  const data = await res.json();
-  return data
+    limit: '10',
+  };
+  const mapResults = (data) => data
     .map((r) => {
       const tags = r.extratags || {};
       return {
@@ -419,9 +450,96 @@ async function searchNominatim(query) {
         address: r.display_name || '',
         phone: tags.phone || tags['contact:phone'] || '',
         website: tags.website || tags['contact:website'] || '',
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
       };
     })
     .filter((r) => r.name);
+  if (!loc) return mapResults(await doSearch(base));
+  // Progressive expansion: start with a tight box around the searcher so
+  // nearby places aren't crowded out by bigger-city matches (Nominatim
+  // ranks by importance, not distance), and widen only if few results
+  // come back.
+  let results = [];
+  for (const deg of [0.12, 0.35]) {
+    const params = {
+      ...base,
+      viewbox: `${loc.lng - deg},${loc.lat + deg},${loc.lng + deg},${loc.lat - deg}`,
+      bounded: '1',
+    };
+    results = mergeResults(results, mapResults(await doSearch(params)));
+    if (results.length >= 3) break;
+  }
+  if (results.length < 3) {
+    // Generic words ("pizza") match poorly inside a box, so retry with the
+    // searcher's area named in the query — that pulls local matches.
+    const area = await reverseGeocodeArea(loc);
+    if (area) {
+      results = mergeResults(results, mapResults(await doSearch({ ...base, q: `${query}, ${area}` })));
+    }
+  }
+  if (results.length < 3) {
+    // Last resort: unbounded, so a far-away search still works.
+    results = mergeResults(results, mapResults(await doSearch(base)));
+  }
+  return results;
+}
+
+// Turn coordinates into "County, State, Country" for locality-biased
+// searches. Cached per rounded location so it costs one request at most.
+const reverseCache = new Map();
+async function reverseGeocodeArea(loc) {
+  const key = `${loc.lat.toFixed(2)},${loc.lng.toFixed(2)}`;
+  const hit = reverseCache.get(key);
+  if (hit && Date.now() - hit.at < 60 * 60 * 1000) return hit.area;
+  try {
+    const wait = 1000 - (Date.now() - lastNominatimAt);
+    if (wait > 0) await sleep(wait);
+    lastNominatimAt = Date.now();
+    const url = 'https://nominatim.openstreetmap.org/reverse?' + new URLSearchParams({
+      lat: String(loc.lat), lon: String(loc.lng), format: 'jsonv2',
+    });
+    const res = await fetchWithTimeout(url, {
+      headers: { 'User-Agent': 'Comment Card (business lookup; contact hello@commentcard.app)' },
+    }, 5000);
+    if (!res.ok) return null;
+    const d = await res.json();
+    const a = d.address || {};
+    const parts = [a.county || a.city || a.town || a.village, a.state, a.country].filter(Boolean);
+    const area = parts.length ? parts.join(', ') : null;
+    if (area) reverseCache.set(key, { area, at: Date.now() });
+    return area;
+  } catch (e) {
+    console.error('Reverse geocode failed:', e.message);
+    return null;
+  }
+}
+
+// Geocode a business name/address to { lat, lng } via Nominatim. Best
+// effort — returns null when nothing is found.
+async function geocodeBusiness(query) {
+  if (!query) return null;
+  try {
+    const wait = 1000 - (Date.now() - lastNominatimAt);
+    if (wait > 0) await sleep(wait);
+    lastNominatimAt = Date.now();
+    const url = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+      q: query, format: 'jsonv2', limit: '1',
+    });
+    const res = await fetchWithTimeout(url, {
+      headers: { 'User-Agent': 'Comment Card (business lookup; contact hello@commentcard.app)' },
+    }, 5000);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.length) return null;
+    const lat = parseFloat(data[0].lat);
+    const lng = parseFloat(data[0].lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  } catch (e) {
+    console.error('Geocode failed:', e.message);
+    return null;
+  }
 }
 
 async function placeDetails(placeId) {
@@ -458,6 +576,26 @@ function mergeResults(primary, extra) {
     }
   }
   return primary;
+}
+
+// Distance between two points in km (haversine).
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Read and validate an optional ?lat= &lng= from the request. Returns
+// { lat, lng } or null when absent/invalid — search works without it.
+function parseLatLng(req) {
+  const lat = parseFloat(req.query.lat);
+  const lng = parseFloat(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
 }
 
 // --- Website email extraction -------------------------------------------
@@ -677,10 +815,15 @@ app.get('/api/businesses/search', rateLimit(30, 60 * 1000), (req, res) => {
 // A consumer adds a business by name + email (the email is how the site
 // knows where to send the "you have a comment" notification). Creates the
 // public page on the fly in an unclaimed state, or returns the existing one.
-app.post('/api/businesses/find-or-create', rateLimit(10, 60 * 1000), (req, res) => {
+app.post('/api/businesses/find-or-create', rateLimit(10, 60 * 1000), async (req, res) => {
   const name = cleanStr(req.body.name, 120);
   const email = cleanStr(req.body.email, 160).toLowerCase();
   const placeId = cleanStr(req.body.place_id, 160);
+  const address = cleanStr(req.body.address, 300);
+  let lat = parseFloat(req.body.lat);
+  let lng = parseFloat(req.body.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) lat = null;
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) lng = null;
 
   if (!name) return res.status(400).json({ error: 'Business name is required.' });
   if (!isValidEmail(email)) return res.status(400).json({ error: 'Enter the business email address.' });
@@ -693,14 +836,28 @@ app.post('/api/businesses/find-or-create', rateLimit(10, 60 * 1000), (req, res) 
     existing = db.prepare('SELECT * FROM businesses WHERE email = ?').get(email);
   }
   if (existing) {
+    // Backfill coordinates for businesses created before they were tracked.
+    if (existing.lat == null || existing.lng == null) {
+      const coords = (lat != null && lng != null) ? { lat, lng }
+        : await geocodeBusiness([name, address || existing.address].filter(Boolean).join(', '));
+      if (coords) {
+        db.prepare('UPDATE businesses SET lat = ?, lng = ?, address = COALESCE(?, address) WHERE id = ?')
+          .run(coords.lat, coords.lng, address || null, existing.id);
+        existing = db.prepare('SELECT * FROM businesses WHERE id = ?').get(existing.id);
+      }
+    }
     return res.json({ business: publicBusinessRow(existing), created: false });
   }
 
+  if (lat == null || lng == null) {
+    const coords = await geocodeBusiness([name, address].filter(Boolean).join(', '));
+    if (coords) { lat = coords.lat; lng = coords.lng; }
+  }
   const slug = uniqueSlug(name);
   const claimToken = newClaimToken();
   const info = db.prepare(
-    'INSERT INTO businesses (slug, name, email, place_id, claimed, claim_token) VALUES (?, ?, ?, ?, 0, ?)'
-  ).run(slug, name, email, placeId || null, claimToken);
+    'INSERT INTO businesses (slug, name, email, place_id, lat, lng, address, claimed, claim_token) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)'
+  ).run(slug, name, email, placeId || null, lat, lng, address || null, claimToken);
   const row = db.prepare('SELECT * FROM businesses WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json({ business: publicBusinessRow(row), created: true });
 });
@@ -752,11 +909,12 @@ app.post('/api/claim/:token', rateLimit(10, 60 * 1000), (req, res) => {
 app.get('/api/places/search', rateLimit(30, 60 * 1000), async (req, res) => {
   const q = cleanStr(req.query.query, 120);
   if (!q || q.length < 2) return res.json({ placesEnabled: !!PLACES_KEY, results: [] });
+  const loc = parseLatLng(req);
   let results = [];
   let error = null;
   if (PLACES_KEY) {
     try {
-      results = await searchPlaces(q);
+      results = await searchPlaces(q, loc);
     } catch (e) {
       console.error('Places search failed:', e.message);
       error = 'Google Places lookup failed; showing other results.';
@@ -764,13 +922,24 @@ app.get('/api/places/search', rateLimit(30, 60 * 1000), async (req, res) => {
   }
   if (!results.length) {
     try {
-      results = mergeResults(results, await searchNominatim(q));
+      results = mergeResults(results, await searchNominatim(q, loc));
     } catch (e) {
       console.error('Nominatim search failed:', e.message);
       if (!error) error = 'Business lookup is unavailable right now — you can still add the business manually.';
     }
   }
-  res.json({ placesEnabled: !!PLACES_KEY, results: results.slice(0, 8), error });
+  if (loc) {
+    // Nearest first: attach each result's distance, then sort by it.
+    // Results without coordinates sort last.
+    for (const r of results) {
+      if (Number.isFinite(r.lat) && Number.isFinite(r.lng)) {
+        r.distanceKm = Math.round(haversineKm(loc.lat, loc.lng, r.lat, r.lng) * 10) / 10;
+        r.distanceMi = Math.round(r.distanceKm * 0.621371 * 10) / 10;
+      }
+    }
+    results.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+  }
+  res.json({ placesEnabled: !!PLACES_KEY, locationUsed: !!loc, results: results.slice(0, 8), error });
 });
 
 app.get('/api/places/details', rateLimit(30, 60 * 1000), async (req, res) => {
@@ -855,6 +1024,35 @@ app.post('/api/public/:slug/comments', rateLimit(30, 60 * 1000), async (req, res
   if (!kind) return res.status(400).json({ error: 'Choose what kind of comment this is.' });
   if (!area) return res.status(400).json({ error: 'Choose which part of the visit this is about.' });
   if (!text) return res.status(400).json({ error: 'Write your comment first.' });
+
+  // 20-mile rule: comments only come from people near the business, to
+  // keep out-of-area spam out. The commenter's location rides along with
+  // the form; the business's coordinates were stored when its page was
+  // created (or are geocoded now if they are missing).
+  let bizLat = biz.lat;
+  let bizLng = biz.lng;
+  if (bizLat == null || bizLng == null) {
+    const coords = await geocodeBusiness([biz.name, biz.address].filter(Boolean).join(', '));
+    if (coords) {
+      bizLat = coords.lat; bizLng = coords.lng;
+      db.prepare('UPDATE businesses SET lat = ?, lng = ? WHERE id = ?').run(bizLat, bizLng, biz.id);
+    }
+  }
+  if (bizLat != null && bizLng != null) {
+    let cLat = parseFloat(req.body.lat);
+    let cLng = parseFloat(req.body.lng);
+    if (!Number.isFinite(cLat) || cLat < -90 || cLat > 90) cLat = null;
+    if (!Number.isFinite(cLng) || cLng < -180 || cLng > 180) cLng = null;
+    if (cLat == null || cLng == null) {
+      return res.status(403).json({ error: `To leave a comment, share your location — we only accept comments from within ${COMMENT_MAX_MILES} miles of this business.` });
+    }
+    const distMi = haversineKm(bizLat, bizLng, cLat, cLng) * 0.621371;
+    if (distMi > COMMENT_MAX_MILES) {
+      return res.status(403).json({ error: `This business is about ${Math.round(distMi)} miles from you — comments only come from within ${COMMENT_MAX_MILES} miles, to keep out-of-area spam out.` });
+    }
+  } else {
+    console.log(`Comment on "${biz.name}" (${biz.slug}) accepted without a distance check — business location unknown.`);
+  }
 
   const info = db.prepare(`
     INSERT INTO comments
