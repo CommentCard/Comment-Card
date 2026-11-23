@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard — Comment Card</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-page="dashboard">
+  <header class="topbar">
+    <a class="brand" href="/">Comment <span>Card</span></a>
+    <nav>
+      <span class="biz-name" id="dash-biz-name"></span>
+      <button class="btn small ghost" id="logout-btn" type="button">Log out</button>
+    </nav>
+  </header>
+
+  <main class="wrap wide">
+    <h1>Your inbox</h1>
+    <p class="lede">Everything customers have said — private to you. The public feed shows the same suggestions, minus anything you've archived or hidden.</p>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" data-tab="inbox" aria-selected="true" type="button">Inbox</button>
+      <button class="tab" data-tab="settings" aria-selected="false" type="button">Your business</button>
+    </div>
+
+    <div id="tab-inbox">
+      <div class="stats-grid" id="stats"></div>
+
+      <div class="filters">
+        <select id="filter-status" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option value="new">New</option>
+          <option value="noted">Noted</option>
+          <option value="acted_on">Acted on</option>
+          <option value="archived">Archived</option>
+        </select>
+        <select id="filter-kind" aria-label="Filter by kind">
+          <option value="">All kinds</option>
+          <option value="bugged">Something bugged me</option>
+          <option value="change">Something I'd change</option>
+          <option value="idea">An idea</option>
+        </select>
+        <input id="filter-search" type="text" placeholder="Search comments…" aria-label="Search comments">
+      </div>
+
+      <div class="error" id="dash-error"></div>
+      <div id="inbox-list"></div>
+      <div class="empty" id="inbox-empty" hidden>No comments match — try clearing the filters.</div>
+    </div>
+
+    <div id="tab-settings" hidden>
+      <section class="card">
+        <h2>Your business</h2>
+        <form id="settings-form" novalidate>
+          <label for="settings-name">Business name</label>
+          <input id="settings-name" type="text" maxlength="120" required>
+          <label for="settings-note">Welcome note <span class="hint">— shown at the top of your public page</span></label>
+          <textarea id="settings-note" maxlength="500" placeholder="e.g. We read every card. Tell us straight — it helps more than a star rating."></textarea>
+          <div class="error" id="settings-error"></div>
+          <div class="success" id="settings-saved">Saved.</div>
+          <button class="btn" type="submit">Save settings</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Your public link</h2>
+        <p class="muted">Share this anywhere — receipts, table cards, social media, your website. Anyone who opens it can read your suggestions and leave their own. No login needed.</p>
+        <div class="linkbox"><code id="public-link"></code></div>
+        <p style="margin-top:12px"><button class="btn ghost small" id="copy-link" type="button">Copy link</button></p>
+        <p class="tiny">Tip: paste the link into any free QR code generator to print a table card customers can scan.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer>Comment Card — customer insight, not reviews.</footer>
+  <script src="/app.js"></script>
+</body>
+</html>
